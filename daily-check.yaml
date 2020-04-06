@@ -1,5 +1,8 @@
 ---
 - name: EXOS Operation box
+  hosts: extreme
+  gather_facts: no
+  
   tasks:
     - name: Make Backup Directory
       local_action:
