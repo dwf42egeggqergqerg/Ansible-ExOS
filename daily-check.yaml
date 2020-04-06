@@ -51,7 +51,6 @@
       local_action:
         dest=/etc/ansible/backup_ext/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.text
 
-
     - name: Read file in CPU
       shell: cat /etc/ansible/backup_ext/$(date +%Y%m%d)/{{ inventory_hostname }}.text | grep 'CPU\:' |awk '{print $2}'
       register: CPU
@@ -63,7 +62,8 @@
       debug: msg="{% if CPU.stdout|regex_search('\d+')|int < 60 %} CPU state OK {% else %} CPU state check {% endif %}"
       register: CPU_state
 
-
+    - name: Make Result Directory
+      local_action:
         module: file
         path: "/etc/ansible/result_ext/{{ lookup('pipe', 'date +%Y%m%d') }}"
         state: directory
@@ -79,7 +79,7 @@
         regexp: "', 'failed': False, 'changed': False}"
         replace: ""
 
-    - name: Result modify
+    - name: Result modify2
       replace:
         path: /etc/ansible/result_ext/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.text
         regexp: "{'msg': u'"
