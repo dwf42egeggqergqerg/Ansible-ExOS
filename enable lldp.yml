@@ -1,0 +1,24 @@
+---
+- name: EXOS Operation Box_Telnet
+  hosts: extreme
+  gather_facts: no
+
+  tasks:
+    - name: CLi show output(2)
+      ios_command:
+        commands:
+          - enable lldp port all
+      register: show
+
+   
+#    - name: CM via telnet
+#      telnet:
+#        user: "{{ ansible_user }}"
+#        password: "{{ ansible_password }}"
+#        password_prompt: "password: "
+#        prompts:
+#          - " # "
+#        command:
+#          - disable clipaging
+#          - show version
+#      register: show_dump
