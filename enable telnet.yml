@@ -4,8 +4,16 @@
   gather_facts: no
 
   tasks:
-    - name: CLi show output(2)
-      ios_command:
+    - name: Cli show output
+      telnet:
+        user: eknow
+        password: test1234
+        login_prompt: "login: "
+        password_prompt: "password: "
+        prompts:
+          - " # "
+          - " admin"
+          - " ↵ "
         commands:
           - enable ssh
       register: show
