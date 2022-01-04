@@ -15,7 +15,7 @@
           - " admin"
           - " ↵ "
         commands:
-          - enable ssh
+          - enable ssh2
       register: show
 
    
