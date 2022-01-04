@@ -7,7 +7,7 @@
     - name: CLi show output(2)
       ios_command:
         commands:
-          - enable telnet
+          - enable ssh
       register: show
 
    
