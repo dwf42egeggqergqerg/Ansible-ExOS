@@ -1,0 +1,21 @@
+---
+- name: EXOS Operation box
+  hosts: all
+  gather_facts: no
+  vars: 
+   - vendor: "Extreme Networks"
+      
+  tasks:
+    - name: Cli show output
+      telnet:
+        user: eknow
+        password: test1234
+        login_prompt: "login: "
+        password_prompt: "password: "
+        prompts:
+          - " # "
+          - " admin"
+          - " ↵ "
+        commands:
+          - enable lldp port all
+      register: show

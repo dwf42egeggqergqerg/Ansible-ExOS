@@ -1,0 +1,8 @@
+---
+- hosts: localhost
+  gather_facts: no
+
+  tasks:
+
+- import_playbook: exos_box.yml
+- import_playbook: exox_bd.yml

@@ -1,0 +1,194 @@
+---
+- name: EXOS Operation chassis
+  hosts: log_chassis
+  gather_facts: no
+  connection: local
+  vars: 
+   - vendor: "Extreme Networks"
+   - hostname: "hostname"
+   - IPADD: "IPADD"
+   - TEM: "TMP_STAT"
+   - CPUS: "CPU_STAT"
+   - FANST: "FAN_STAT"
+   - VERSIONC: "IMG"
+   - UPTIMES: "UPTIME"
+   - CPU_UT: "CPU_UT"
+   - MEM_UT: "MEM_UT"
+   - PORT_S: "PORT_STAT" 
+      
+  tasks:
+   - name: Make Backup Directory
+     local_action:
+       module: file
+       path: "/etc/ansible/backup_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}"
+       state: directory
+       mode: u=rwX,g=rX,o=rX
+
+   - name: Read file in Fans
+     shell: "cat /etc/ansible/Chassis/{{ inventory_hostname }} | egrep 'State:                  '"
+     ignore_errors: True
+     register: Fans
+     
+   - name: Fan state check
+     debug: msg="{% if Fans.stdout in 'Failed' %} 비정상 {% else %} 정상 {% endif %}"
+     register: Fan_state
+     ignore_errors: True
+
+   - name: Read file in Temp
+     shell: cat /etc/ansible/Chassis/{{ inventory_hostname }} | sed -n '/show temperature/,/show slot/'p
+     register: Temp
+     ignore_errors: True
+
+   - name: Temp state check
+     debug: msg="{% if 'Overheat' in Temp.stdout %} TMP state Check {% elif 'Error' in Temp.stdout %} TMP state Check {% else %} TMP state OK {% endif %}"
+     register: Temp_state
+     ignore_errors: True
+
+   - name: Read file in VERSION
+     shell: "cat /etc/ansible/Chassis/{{ inventory_hostname }} | grep 'Image   :' | awk '{print $5}'"
+     register: VERSION
+     ignore_errors: True
+
+   - name: Read file in UPTIME
+     shell: cat /etc/ansible/Chassis/{{ inventory_hostname }} | grep 'System UpTime' | awk '{print $3$4}'
+     register: UPTIME
+     ignore_errors: True
+       
+   - name: Read file in CPU
+     shell: "cat /etc/ansible/Chassis/{{ inventory_hostname }} | grep 'CPU:  ' | awk '{print $1$2}'"
+     register: CPU
+     ignore_errors: True
+
+   - name: CPU utility compare
+     debug: msg="{% if CPU.stdout|regex_search('\d+')|int < 60 %} 정상 {% else %} 비정상 {% endif %}"
+     register: CPU_state
+     ignore_errors: True
+     
+   - name: Read file in MemoryT
+     shell: cat /etc/ansible/Chassis/{{ inventory_hostname }} | grep "Total DRAM (KB):"
+     register: MemoryT
+     ignore_errors: True
+     
+   - name: Read file in MemoryS
+     shell: cat /etc/ansible/Chassis/{{ inventory_hostname }} | grep "System     (KB):"
+     register: MemoryS
+     ignore_errors: True
+     
+   - name: Read file in MemoryU
+     shell: cat /etc/ansible/Chassis/{{ inventory_hostname }} | grep "User       (KB):"
+     register: MemoryU
+     ignore_errors: True
+     
+   - name: arithmetic facs
+     set_fact: set="{{ (MemoryS.stdout|regex_search('\d+')|int + MemoryU.stdout|regex_search('\d+')|int) / MemoryT.stdout|regex_search('\d+')|int * 100}}"
+     ignore_errors: True
+      #+   MemoryU.stdout|regex_search('\d+')|int
+      
+   - name: memory utility compare
+     debug: msg="{% if set|regex_search('\d+')|int < 60 %} MEM state OK {% else %} MEM state check {% endif %}"
+     register: Memory_state
+     ignore_errors: True
+
+   - name: Read file in PORT
+     shell: cat /etc/ansible/Chassis/{{ inventory_hostname }} | sed -n '/show ports txerrors no-refresh/,/show ports transceiver information/'p | grep -o '[0-9]'* | awk '{if ($0<100) { print "OK" } else { print "Check" } }'
+     ignore_errors: True
+     register: port
+         
+#   - name: Read file in IP
+#     shell: cat /etc/ansible/Chassis/{{ inventory_hostname }} | egrep "configure vlan Mgmt ipaddress" | awk '{print $5}'
+#     ignore_errors: True
+#     register: IP
+     
+   - name: PORT Error compare
+     debug: msg="{% if port.stdout in "Check" %} 비정상 {% else %} 정상 {% endif %}"
+     register: PORT_state
+     ignore_errors: True
+
+   - name: Read file in SlotS
+     shell: cat /etc/ansible/Chassis/{{ inventory_hostname }} |egrep "Hw Module Type:|Serial number:" | awk '{print $4}' | sed 's/[^a-z,A-Z,0-9]//g' | sed '/^$/d' | awk ' NR % 2 == 1 { printf "%s ", $0 } NR % 2 == 0 { print $0 }' | awk '{print $2,"|",$1}' 
+     register: Slot_moduleserial
+     ignore_errors: True
+     
+   - name: Make Result Directory
+     local_action:
+       module: file
+       path: "/etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}"
+       state: directory
+       mode: u=rwX,g=rX,o=rX
+
+   - name: show_Result
+     local_action:
+       copy content="{{ hostname }} | {{ TEM }} | {{ CPUS }} | {{ FANST }} | {{ VERSIONC }} | {{ UPTIMES }} | {{ CPU_UT }} | {{ MEM_UT }} | {{ PORT_S }}\n{{ inventory_hostname }} | {{ Temp_state }}|{{ CPU_state }}|{{ Fan_state }}| {{ VERSION.stdout }} | {{ UPTIME.stdout }} | {{ CPU.stdout |regex_search('\d*')|int }} | {{ set|regex_search('\d*')|int }} | {{ PORT_state }} | \n{{ Slot_moduleserial.stdout }}"
+       dest=/etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}
+     ignore_errors: True
+     
+   - name: Result modify
+     replace:
+       path: /etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}
+       regexp: "', 'failed': False, 'changed': False}"
+       replace: ""
+
+   - name: Result modify2
+     replace:
+       path: /etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}
+       regexp: "{'msg': '"
+       replace: ""
+
+   - name: Assemble Result Summary
+     assemble:
+       src: "/etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/"
+       dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS_telnet.txt"
+
+   - name: Read users from CSV file and return a list
+     copy:
+      src: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS_telnet.txt"
+      dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS_telnet.csv"
+
+#    - name: Read file in MODEL
+#      shell: cat /etc/ansible/backup_ext/$(date +%Y%m%d)/{{ inventory_hostname }}.text | grep 'System Type' | awk '{print $3}'
+#      register: MODEL
+#
+#    - name: Read file in VERSION
+#      shell: cat /etc/ansible/backup_ext/$(date +%Y%m%d)/{{ inventory_hostname }}.text | grep 'IMG:' | awk '{print $10}'
+#      register: VERSION
+#
+#    - name: Read file in UPTIME
+#      shell: cat /etc/ansible/backup_ext/$(date +%Y%m%d)/{{ inventory_hostname }}.text | grep 'System UpTime' | awk '{print $3}'
+#      register: UPTIME
+#
+#    - name: arithmetic facs
+#      set_fact: set="{{ (show.stdout[4]|regex_search('\d+')|int + show.stdout[5]|regex_search('\d+')|int) / show.stdout[3]|regex_search('\d+')|int * 100}}"
+#
+#    - name: memory utility compare
+#      debug: msg="{% if set|regex_search('\d+')|int < 60 %} MEM state OK {% else %} MEM state check {% endif %}"
+#      register: Memory_state
+#
+#    - name: Fan state check
+#      debug: msg="{% if show.stdout[2] in 'Failed' %} 비정상 {% else %} 정상 {% endif %}"
+#      register: Fan_state
+#
+#    - name: Temp state check
+#      debug: msg="{% if 'Normal' in show.stdout[8] %} 정상  {% else %} 비정상 {% endif %}"
+#      register: Temp_state
+#
+#    - name: Power state check
+#      debug: msg="{% if 'Failed' in show.stdout[10] %} PWR state Check {% else %} PWR state OK {% endif %}"
+#      register: Power_state
+
+
+#    - name: CPU check
+#      debug: msg={{ CPU.stdout }}
+#
+#    - name: CPU utility compare
+#      debug: msg="{% if CPU.stdout|regex_search('\d+')|int < 60 %} 정상 {% else %} 비정상 {% endif %}"
+#      register: CPU_state
+#
+#    - name: PORT Error compare
+#      debug: msg="{% if port.stdout in "Check" %} 비정상 {% else %} 정상 {% endif %}"
+#      register: PORT_state
+
+#    - name: show_Result
+#      local_action:
+#        copy content="{{ inventory_hostname }} | {{ vendor}} | {{ MODEL.stdout }} |{{ Temp_state }}|{{ CPU_state }}|{{ Fan_state }}| {{ VERSION.stdout }} | {{ UPTIME.stdout }} | {{ CPU.stdout |regex_search('\d*')|int }} | {{ set|regex_search('\d*')|int }} | {{ PORT_state }} | {{ Memory_state }} | {{ Power_state }}  |"
+#        dest=/etc/ansible/result_ext/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.text
+

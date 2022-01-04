@@ -1,0 +1,108 @@
+---
+- name: EXOS Operation box
+  hosts: extreme
+  gather_facts: no
+  tasks:
+    - name: Make Backup Directory
+      local_action:
+        module: file
+        path: "/etc/ansible/backup_ext/{{ lookup('pipe', 'date +%Y%m%d') }}"
+        state: directory
+        mode: u=rwX,g=rX,o=rX
+
+    - name: run commands that require answering a prompt
+      ios_command:
+        commands:
+          - command: "top"
+            prompt: 'q'
+            answer: 'q'
+      register: top
+
+    - name: CLi show output
+      ios_command:
+        commands:
+          - show system | grep Image\s+\:\s+ExtremeXOS\s+version
+          - "show fans"
+          - "show memory | grep Total"
+          - show memory | grep System\s+\(KB\)
+          - "show memory | grep User"
+          - "show memory | grep Free"
+          - "show memory"
+          - "show temperature"
+          - "show power"
+      register: show
+
+    - name: arithmetic facs
+      set_fact: set="{{ (show.stdout[3]|regex_search('\d+')|int + show.stdout[4]|regex_search('\d+')|int) / show.stdout[2]|regex_search('\d+')|int * 100}}"
+
+
+    - name: memory utility compare
+      debug: msg="{% if set|regex_search('\d+')|int < 60 %} MEM state OK {% else %} MEM state check {% endif %}"
+      register: Memory_state
+
+    - name: Fan state check
+      debug: msg="{% if show.stdout[1] in 'Empty' %} FAN state Check {% else %} FAN state OK {% endif %}"
+      register: Fan_state
+
+    - name: Temp state check
+      debug: msg="{% if 'Normal' in show.stdout[7] %} TMP state OK {% else %} TMP state Check {% endif %}"
+      register: Temp_state
+
+    - name: Power state check
+      debug: msg="{% if 'Empty' in show.stdout[8] %} PWR state Check {% else %} PWR state OK {% endif %}"
+      register: Power_state
+
+    - name: show_backup
+      local_action:
+        copy content="\n#####{{ inventory_hostname }}#####\n{{ show.stdout[0] }}\n\n{{ show.stdout[1] }}\n\n{{ show.stdout[2] }}\n{{ show.stdout[3] }}\n{{ show.stdout[4] }}\n{{ show.stdout[5] }}\n\n{{ show.stdout[7] }}\n\n{{ show.stdout[8] }}\n\n{{ top.stdout[0] }}"
+        dest=/etc/ansible/backup_ext/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.text
+
+
+    - name: Read file in CPU
+      shell: cat /etc/ansible/backup_ext/$(date +%Y%m%d)/{{ inventory_hostname }}.text | grep 'CPU\:' |awk '{print $2}'
+      register: CPU
+
+    - name: CPU check
+      debug: msg={{ CPU.stdout }}
+
+    - name: CPU utility compare
+      debug: msg="{% if CPU.stdout|regex_search('\d+')|int < 60 %} CPU state OK {% else %} CPU state check {% endif %}"
+      register: CPU_state
+
+
+    - name: Make Result Directory
+      local_action:
+        module: file
+        path: "/etc/ansible/result_ext/{{ lookup('pipe', 'date +%Y%m%d') }}"
+        state: directory
+        mode: u=rwX,g=rX,o=rX
+
+    - name: show_Result
+      local_action:
+        copy content="\n#####{{ inventory_hostname }}#####|{{ CPU_state }}|{{ Memory_state }}|{{ Fan_state }}|{{ Temp_state }}|{{ Power_state }}"
+        dest=/etc/ansible/result_ext/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.text
+
+    - name: Result modify
+      replace:
+        path: /etc/ansible/result_ext/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.text
+        regexp: "', 'failed': False, 'changed': False}"
+        replace: ""
+
+    - name: Result modify
+      replace:
+        path: /etc/ansible/result_ext/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.text
+        regexp: "{'msg': u'"
+        replace: ""
+
+
+    - name: Assemble Result Summary
+      assemble:
+        src: "/etc/ansible/result_ext/{{ lookup('pipe', 'date +%Y%m%d') }}/"
+        dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS.txt"
+
+
+    - name: Read users from CSV file and return a list
+      copy:
+        src: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS.txt"
+        remote_src: yes
+        dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS.csv"

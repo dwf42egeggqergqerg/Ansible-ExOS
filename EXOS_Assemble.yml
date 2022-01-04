@@ -1,0 +1,10 @@
+---
+- hosts: localhost
+  gather_facts: no
+
+  tasks:
+
+- import_playbook: EXOS_BOX.yml
+- import_playbook: EXOS_BD.yml
+- import_playbook: EXOS_BOX_Telnet.yml 
+- import_playbook: EXOS_BD_Telnet.yml

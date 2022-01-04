@@ -1,0 +1,266 @@
+---
+- name: EXOS Operation Box_Telnet
+  hosts: extel
+  gather_facts: no
+  vars: 
+   - vendor: "Extreme Networks"
+   
+   
+  tasks:
+   - name: Make Backup Directory
+     local_action:
+       module: file
+       path: "/etc/ansible/backup_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}"
+       state: directory
+       mode: u=rwX,g=rX,o=rX
+
+   - name: Cli show output
+     telnet:
+       user: admin
+       password: test1234
+       login_prompt: "login"
+       password_prompt: "password:"
+       prompts:
+         - "q"
+         - "[#]"
+         - "q"
+       command:
+         - disable clipaging
+         - "top"
+     register: top
+
+   - name: CLi show output(2)
+     telnet:
+       user: root
+       password: test1234
+       password_prompt: "password:"
+       prompts:
+         - "[#]"
+         - "q"
+       command:
+         - disable clipaging
+         - show version
+         - "show fans"
+         - "show memory | grep Total"
+         - show memory | grep System\s+\(KB\)
+         - "show memory | grep User"
+         - "show memory | grep Free"
+#         - "show memory"
+         - "show temperature"
+         - "show power"
+         - show system | grep System\s+Type
+         - show switch | grep System\s+UpTime
+         - show port rxerrors no-refresh
+#         - show version | grep Switch
+     register: show
+     
+   - name: show_backup
+     local_action:
+       copy content="\n#####{{ inventory_hostname }}#####\n{{ show.output[1] }}\n\n{{ show.output[2] }}\n\n{{ show.output[3] }}\n{{ show.output[4] }}\n{{ show.output[5] }}\n{{ show.output[6] }}\n\n{{ show.output[7] }}\n\n\{{ show.output[8] }}\n\n\{{ show.output[9] }}\n\n{{ show.output[10] }}\n\n{{ top.output[1] }}"
+       dest=/etc/ansible/backup_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+
+   - name: show_backup_portstate
+     local_action:
+       copy content="{{ show.output[11] }}"
+       dest=/etc/ansible/backup_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}_port.txt
+
+   - name: arithmetic facs
+     set_fact: set="{{ (show.output[4]|regex_search('\d+')|int + show.output[5]|regex_search('\d+')|int) / show.output[3]|regex_search('\d+')|int * 100}}"
+
+   - name: memory utility compare
+     debug: msg="{% if set|regex_search('\d+')|int < 60 %} MEM state OK {% else %} MEM state check {% endif %}"
+     register: Memory_state
+
+   - name: Fan state check
+     debug: msg="{% if show.output[2] in 'Failed' %} 비정상 {% else %} 정상 {% endif %}"
+     register: Fan_state
+
+   - name: Temp state check
+     debug: msg="{% if 'Normal' in show.output[7] %} 정상  {% else %} 비정상 {% endif %}"
+     register: Temp_state
+
+   - name: Power state check
+     debug: msg="{% if 'Failed' in show.output[8] %} PWR state Check {% else %} PWR state OK {% endif %}"
+     register: Power_state
+
+   - name: Read file in PORT
+     shell: cat /etc/ansible/backup_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}_port.txt | grep -o '[0-9]'* | awk '{if ($0<100) { print "OK" } else { print "Check" } }'
+     ignore_errors: True
+     register: port
+
+   - name: Read file in CPU
+     shell: cat /etc/ansible/backup_ext_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'CPU\:' |awk '{print $2}'
+     register: CPU
+
+   - name: Read file in MODEL
+     shell: cat /etc/ansible/backup_ext_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'System Type' | awk '{print $3}'
+     register: MODEL
+
+
+   - name: Read file in Serial
+     shell: cat /etc/ansible/backup_ext_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'IMG:' | awk '{print $4}'
+     register: SERIAL
+
+   - name: Read file in VERSION
+     shell: cat /etc/ansible/backup_ext_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'IMG:' | awk '{print $10}'
+     register: VERSION
+
+   - name: Read file in UPTIME
+     shell: cat /etc/ansible/backup_ext_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'System UpTime' | awk '{print $3}'
+     register: UPTIME
+
+   - name: CPU check
+     debug: msg={{ CPU.stdout }}
+
+   - name: CPU utility compare
+     debug: msg="{% if CPU.stdout|regex_search('\d+')|int < 60 %} 정상 {% else %} 비정상 {% endif %}"
+     register: CPU_state
+
+   - name: PORT Error compare
+     debug: msg="{% if port.stdout in "Check" %} 비정상 {% else %} 정상 {% endif %}"
+     register: PORT_state
+
+   - name: Make Result Directory
+     local_action:
+       module: file
+       path: "/etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}"
+       state: directory
+       mode: u=rwX,g=rX,o=rX
+
+   - name: show_Result
+     local_action:
+       copy content="{{ inventory_hostname }} | {{ vendor}} | {{ MODEL.stdout }} | {{ SERIAL.stdout }} | |{{ Temp_state }}|{{ CPU_state }}|{{ Fan_state }}| {{ VERSION.stdout }} | {{ UPTIME.stdout }} | {{ CPU.stdout |regex_search('\d*')|int }} | {{ set|regex_search('\d*')|int }} | {{ PORT_state }} |"
+       dest=/etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+
+   - name: Result modify
+     replace:
+       path: /etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+       regexp: "', 'failed': False, 'changed': False}"
+       replace: ""
+
+   - name: Result modify2
+     replace:
+       path: /etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+       regexp: "{'msg': '"
+       replace: ""
+
+   - name: Assemble Result Summary
+     assemble:
+       src: "/etc/ansible/result_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/"
+       dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS_telnet.txt"
+
+   - name: Read users from CSV file and return a list
+     copy:
+      src: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS_telnet.txt"
+      dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS_telnet.csv"
+#
+#
+#  - name: Read file1
+#    shell: cat /etc/ansible/backup_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt | grep Free |awk '{print $3}'
+#    register: HOST_MGMT1
+#
+#
+#
+#      copy: "/etc/ansible/backup_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt"
+#  - name: debug
+#    debug: msg="{{ vm }}"
+#      backup: yes
+#      backup_options:
+#        filename: showbackup
+#        dir_path: /etc/ansible/backup_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+#       
+#      dest: /etc/ansible/backup_ext_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+#
+#  - name: read file0
+#    shell: 'cat /etc/ansible/backup/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep "Current time"'
+#    register: HOST_MGMT0
+#
+#  - name: Read file1
+#    shell: "cat /etc/ansible/backup/$(date +%Y%m%d)/{{ inventory_hostname }}.txt"
+#    register: HOST_MGMT1
+#
+#  - name: Alarm check
+#    when: '"{{ item }} alarms currently active" in HOST_MGMT1.output'
+#    debug: msg="{% if 'No alarms currently active' in HOST_MGMT1.output %} ALM state OK {% else %}  ALM state check {% endif %}"
+#    register: result_alarm
+#    with_sequence: '0-10'
+#
+#  - name: NTP check
+#    debug: msg="{% if 'sync_ntp' in HOST_MGMT1.output %}  NTP state OK {% else %}  NTP state check {% endif %}"
+#    register: result_ntp
+#
+#  - name: read file2
+#    shell: 'cat /etc/ansible/backup/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep FPC'
+#    ignore_errors: True
+#    register: HOST_MGMT3
+#
+#  - name: ENV check
+#    when: '"Absent" or "Present" or "Failed" or "Check" in HOST_MGMT3.output'
+#    debug: msg="ENV check"
+#    ignore_errors: True
+#    register: result_env
+#
+#  - name: read file3
+#    shell: 'cat /etc/ansible/backup/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep "Memory"'
+#    ignore_errors: True
+#    register: HOST_MGMT4
+#
+#  - name: Memory check
+#    debug: msg="{% if HOST_MGMT4.output | regex_search('\d+') | int < 60 %}  MEM state OK {% else %}  MEM state check {% endif %}"
+#    register: result_memory
+#
+#  - name: read file4
+#    shell: 'cat /etc/ansible/backup/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep "Idle"'
+#    ignore_errors: True
+#    register: HOST_MGMT5
+#
+#  - name: Make Result Directory
+#    local_action:
+#      module: file
+#      path: "/etc/ansible/result/{{ lookup('pipe', 'date +%Y%m%d') }}"
+#      state: directory
+#      mode: u=rwX,g=rX,o=rX
+#
+#  - name: Result summary
+#    local_action:
+#      copy content="##########_{{ inventory_hostname }}_##########\n{{ HOST_MGMT0.output }}\n{{result_alarm}}\n{{ result_ntp }}\n{{ result_env }}\n{{ result_memory }}\n\n"
+#      dest="/etc/ansible/result/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt"
+#
+#  - name: Assemble from fragments from a directory
+#    assemble:
+#      src: "/etc/ansible/result/{{ lookup('pipe', 'date +%Y%m%d') }}/"
+#      dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_summary_extelnet.txt"
+#    ignore_errors: True
+#    register: Result_summary_extelnet
+#
+#  - name: Result modify1
+#    replace:
+#      path: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_summary_extelnet.txt"
+#      regexp: "'msg': u'"
+#      replace: ""
+#
+#  - name: Result modify2
+#    replace:
+#      path: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_summary_extelnet.txt"
+#      regexp: "'skip_reason': u'Conditional result was False', 'skipped': True, 'changed': False"
+#      replace: "OK"
+#
+#  - name: Result modify3
+#    replace:
+#      path: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_summary_extelnet.txt"
+#      regexp: "'failed': False, 'changed': False"
+#      replace: ""
+#
+#  - name: Result modify4
+#    lineinfile:
+#      dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_summary_extelnet.txt"
+#      state: present
+#      regexp: 'ALM state check'
+#      line: '{Alarm check}'
+#      create: yes
+#
+#  - name: Read users from CSV file and return a list
+#    copy:
+#      src: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_summary_extelnet.txt"
+#      remote_src: yes
+#      dest: "/etc/result/ResultSSUM.csv"

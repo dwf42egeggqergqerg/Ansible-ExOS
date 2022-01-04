@@ -1,0 +1,32 @@
+---
+- name: EXOS Operation Box_Telnet
+  hosts: all
+  gather_facts: no
+
+  tasks:
+    - name: Cli show output
+      telnet:
+        user: eknow
+        password: test1234
+        login_prompt: "login: "
+        password_prompt: "password: "
+        prompts:
+          - " # "
+          - " admin "
+          - " ↵ "
+        commands:
+          - enable ssh2
+      register: show
+
+   
+#    - name: CM via telnet
+#      telnet:
+#        user: "{{ ansible_user }}"
+#        password: "{{ ansible_password }}"
+#        password_prompt: "password: "
+#        prompts:
+#          - " # "
+#        command:
+#          - disable clipaging
+#          - show version
+#      register: show_dump

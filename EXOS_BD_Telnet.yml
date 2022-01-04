@@ -1,0 +1,184 @@
+---
+- name: EXOS Operation BD_Telnet
+  hosts: exbd
+  gather_facts: no
+  vars: 
+   - vendor: "Extreme Networks"
+
+  tasks:
+    - name: Make Backup Directory
+      local_action:
+        module: file
+        path: "/etc/ansible/backup_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}"
+        state: directory
+        mode: u=rwX,g=rX,o=rX
+
+    - name: CLi show cpu
+      telnet:
+        user: root
+        password: test1234
+        login_prompt: "login"
+        password_prompt: "password:"
+        prompts:
+          - "[#]"
+          - "q"
+        command: 
+          - "top"
+      register: top
+
+    - name: CLi show output
+      telnet:
+        user: root
+        password: test1234
+        password_prompt: "password:"
+        prompts:
+          - "[#]"
+        send_newline: no
+        command:        
+          - disable clipaging
+          - show system | include Image\s+\:\s+ExtremeXOS\s+version
+          - show memory | include MSM\-A\s+Total\s+DRAM
+          - show memory | include MSM\-A\s+System\s+
+          - show memory | include MSM\-A\s+User
+          - show memory | include MSM-A\s+Free
+          - show memory | include MSM\-B\s+Total\s+DRAM
+          - show memory | include MSM\-B\s+System\s+
+          - show memory | include MSM\-B\s+User
+          - show memory | include MSM-B\s+Free
+          - "show temperature"
+          - "show fans"
+          - "show slot"
+          - "show power"
+          - show switch | include SysName
+          - show switch | include System\s+UpTime
+          - show port rxerrors no-refresh
+          - show log
+          - show version
+          - show slot detail
+      register: show
+       
+    - name: show_backup
+      local_action:
+        copy content="\n#####{{ inventory_hostname }}#####\n{{ show.output[2] }}\n{{ show.output[3] }}\n{{ show.output[4] }}\n\n{{ show.output[5] }}\n{{ show.output[6] }}\n{{ show.output[7] }}\n{{ show.output[8] }}\nn\n{{ show.output[9] }}\n\n{{ show.output[10] }}\n\n{{ show.output[11] }}\n\n{{ show.output[12] }}\n\n{{ show.output[13] }}\n\n{{ show.output[14] }}\n\n{{ show.output[15] }}\n\n{{ top.output[0] }}\n\n\n\n{{ show.output[16] }}\n{{ show.output[17] }}\n{{ show.output[18] }}\n{{ show.output[19] }}"
+        dest=/etc/ansible/backup_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+
+    - name: show_backup_portstate
+      local_action:
+        copy content="{{ show.output[16] }}"
+        dest=/etc/ansible/backup_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}_port.txt
+        
+    - name: show_backup_slot
+      local_action:
+        copy content="{{ show.output[19] }}"
+        dest=/etc/ansible/backup_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}_slot.txt 
+
+    - name: arithmetic facs
+      set_fact: set="{{ (show.output[3]|regex_search('\d+')|int + show.output[4]|regex_search('\d+')|int) / show.output[2]|regex_search('\d+')|int * 100}}"
+
+    - name: memory utility compare
+      debug: msg="{% if set|regex_search('\d+')|int < 60 %} MEM state OK {% else %} MEM state check {% endif %}"
+      register: Memory_state
+
+    - name: Fan state check
+      debug: msg="{% if show.output[11] in 'Failed' %} FAN state check {% else %} FAN state OK {% endif %}"
+      register: Fan_state
+
+    - name: Slot state check
+      debug: msg="{% if 'Failed' in show.output[12] %} Slot state Check {% elif 'Mismatch' in show.output[12] %} Slot state Check  {% elif 'Down' in show.output[12] %} Slot state Check {% elif 'Power ON' in show.output[12] %} Slot state Check {% elif 'Powered OFF' in show.output[12] %} Slot state Check {% elif 'Booting' in show.output[12] %} Slot state Check {% elif 'VLAN sync' in show.output[12] %} Slot state Check {% elif 'FDB sync' in show.output[12] %} Slot state Check {% elif 'ACL sync' in show.output[12] %} Slot state Check  {% elif 'RT sync' in show.output[12] %} Slot state Check {% else %} Slot state ok {% endif %}"
+      register: Slot_state       
+
+    - name: Read file in PORT
+      shell: cat /etc/ansible/backup_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}_port.txt | grep -o '[0-9]'* | awk '{if ($0<100) { print "OK" } else { print "Check" } }'
+      ignore_errors: True
+      register: port
+
+    - name: Read file in CPU
+      shell: cat /etc/ansible/backup_ext_bd_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'CPU\:' |awk '{print $2}'
+      register: CPU
+
+    - name: Read file in CPU_user
+      shell: cat /etc/ansible/backup_ext_bd_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'CPU\:' |awk '{print $4}'
+      register: CPU_user 
+
+
+    - name: Read file in SERIAL
+      shell: cat /etc/ansible/backup_ext_bd_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'Chassis     :' |awk '{print $4}'
+      register: SERIAL
+
+    - name: arithmetic facs
+      set_fact: setcpu="{{ (CPU.stdout[0]|regex_search('\d+')|int + CPU_user.stdout[0]|regex_search('\d+')|int) }}"
+    
+    - name: CPU utility compare
+      debug: msg="{% if setcpu|regex_search('\d+')|int < 60 %} CPU state OK {% else %} CPU state check {% endif %}"
+      register: CPU_state
+
+    - name: Temp state check
+      debug: msg="{% if 'Overheat' in show.output[10] %} TMP state Check {% elif 'Error' in show.output[10] %} TMP state Check {% else %} TMP state OK {% endif %}"
+      register: Temp_state
+      
+    - name: Read file in MODEL
+      shell: cat /etc/ansible/backup_ext_bd_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'SysName:' | awk '{print $2}'
+      register: MODEL
+
+    - name: Read file in UPTIME
+      shell: cat /etc/ansible/backup_ext_bd_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'System UpTime' | awk '{print $3}'
+      register: UPTIME
+
+    - name: Read file in VERSION
+      shell: cat /etc/ansible/backup_ext_bd_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt | grep 'Image   :' | awk '{print $5}'
+      register: VERSION
+      
+    - name: Read file in SlotS
+      shell: cat /etc/ansible/backup_ext_bd_telnet/$(date +%Y%m%d)/{{ inventory_hostname }}.txt |egrep "Hw Module Type:|Serial number:" | awk '{print $4}' | sed 's/[^a-z,A-Z,0-9]//g' | sed '/^$/d' | awk ' NR % 2 == 1 { printf "%s ", $0 } NR % 2 == 0 { print $0 }' | awk '{print $2,"|",$1}' 
+      register: Slot_moduleserial
+    
+    - name: PORT Error compare
+      debug: msg="{% if port.stdout in "Check" %} Error {% else %} OK {% endif %}"
+      register: PORT_state
+    
+    - name: Make Result Directory
+      local_action:
+        module: file
+        path: "/etc/ansible/result_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}"
+        state: directory
+        mode: u=rwX,g=rX,o=rX
+    
+    - name: debugtest 
+      debug: msg={{ Slot_moduleserial.stdout }}
+    
+    - name: show_Result
+      local_action:
+        copy content="{{ inventory_hostname }} | {{ vendor }} | {{ MODEL.stdout }} | {{SERIAL.stdout}} |{{ Temp_state }}|{{ CPU_state }}|{{ Slot_state }}|{{ Fan_state }}| {{ VERSION.stdout }} | {{ UPTIME.stdout }} | {{ CPU.stdout |regex_search('\d*')|int }} | {{ set|regex_search('\d*')|int }} | | | {{ PORT_state }} |\n{{ Slot_moduleserial.stdout }} \n\n"
+        dest=/etc/ansible/result_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+    
+    - name: Result modify
+      replace:
+        path: /etc/ansible/result_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+        regexp: "', 'failed': False, 'changed': False}"
+        replace: ""
+    
+    - name: Result modify2
+      replace:
+        path: /etc/ansible/result_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+        regexp: "{'msg': '"
+        replace: ""
+
+    - name: Result modify3
+      replace:
+        path: /etc/ansible/result_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/{{ inventory_hostname }}.txt
+        regexp: "{'msg': u'"
+        replace: ""
+    
+    - name: Assemble Result Summary
+      assemble:
+        src: "/etc/ansible/result_ext_bd_telnet/{{ lookup('pipe', 'date +%Y%m%d') }}/"
+        dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS_bd_telnet.txt"
+    
+    - name: Read users from CSV file and return a list
+      copy:
+        src: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS_bd_telnet.txt"
+        remote_src: yes
+        dest: "/etc/ansible/{{ lookup('pipe', 'date +%Y%m%d') }}_Result_Summary_EXOS_bd_telnet.csv"
+
+
+
