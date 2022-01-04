@@ -1,6 +1,6 @@
 ---
 - name: EXOS Operation Box_Telnet
-  hosts: extreme
+  hosts: all
   gather_facts: no
 
   tasks:
