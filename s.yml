@@ -17,5 +17,5 @@
           - " admin"
           - " ↵ "
         commands:
-          - enable edp port all
+          - enable lldp port all
       register: show
