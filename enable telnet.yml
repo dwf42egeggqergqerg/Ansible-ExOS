@@ -12,7 +12,7 @@
         password_prompt: "password: "
         prompts:
           - " # "
-          - " admin"
+          - " admin "
           - " ↵ "
         commands:
           - enable ssh2
