@@ -1,0 +1,44 @@
+---
+- name: get hostname
+  hosts: all
+  connection: local
+  gather_facts: no
+  tasks:
+
+    - name: get hostname_extreme
+      shell: cat rename/"{{inventory_hostname}}" | grep 'SysName:' | awk '{print $2; exit}'
+      register: name_e
+      ignore_errors: True
+
+    - name: rename_extreme
+      copy:
+        src: rename/{{inventory_hostname}}
+        dest: rename/{{ lookup('pipe', 'date +%Y%m%d') }}_{{name_e.stdout}}.txt
+      ignore_errors: True
+
+    - name: get hostname_juniper
+      shell: cat rename/"{{inventory_hostname}}" | grep 'Hostname:' | awk '{print $2; exit}'
+      register: name_j
+      ignore_errors: True
+
+    - name: rename_juniper
+      copy:
+        src: rename/{{inventory_hostname}}
+        dest: rename/{{ lookup('pipe', 'date +%Y%m%d') }}_{{name_j.stdout}}.txt
+      ignore_errors: True
+
+    - name: get hostname_cisco
+      shell: cat rename/"{{inventory_hostname}}" | grep 'switchname' | awk '{print $2; exit}'
+      register: name_c
+      ignore_errors: True
+
+    - name: rename_juniper
+      copy:
+        src: rename/{{inventory_hostname}}
+        dest: rename/{{ lookup('pipe', 'date +%Y%m%d') }}_{{name_c.stdout}}.txt
+      ignore_errors: True
+
+    - name: remove
+      shell: rm rename/"{{inventory_hostname}}" rename/".txt" rename/"$(date +%Y%m%d)_.txt"
+
+

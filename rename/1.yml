@@ -1,0 +1,12 @@
+---
+- name: change filename
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+
+    - name: get filename
+      shell: ls -1 rename/ >hosts
+
+    - name: change filename
+      shell: ansible-playbook -i hosts 2.yml
