@@ -1,0 +1,11 @@
+---
+- name: test
+  hosts: localhost
+  gather_facts: no
+  connection: local
+
+  tasks:
+    - name: Read file in hostname
+      shell: bash /etc/ansible/awx_test.sh
+      register: hostname
+      ignore_errors: True
