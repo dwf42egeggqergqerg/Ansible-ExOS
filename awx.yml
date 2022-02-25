@@ -6,6 +6,6 @@
 
   tasks:
     - name: Read file in hostname
-      shell: bash /var/lib/awx/log/FA_EX3400_VC_A/messages_2022-02-24.log
+      shell: bash /var/lib/awx/projects/log
       register: hostname
       ignore_errors: True
