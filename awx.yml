@@ -6,6 +6,6 @@
 
   tasks:
     - name: Read file in hostname
-      shell: bash /etc/ansible/awx_test.sh
+      shell: bash /var/lib/awx/projects/_6__demo_project/awx_test.sh
       register: hostname
       ignore_errors: True
