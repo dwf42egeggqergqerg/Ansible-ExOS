@@ -9,16 +9,3 @@
         commands:
           - show version
       register: show
-
-   
-#    - name: CM via telnet
-#      telnet:
-#        user: "{{ ansible_user }}"
-#        password: "{{ ansible_password }}"
-#        password_prompt: "password: "
-#        prompts:
-#          - " # "
-#        command:
-#          - disable clipaging
-#          - show version
-#      register: show_dump
